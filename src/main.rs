@@ -5,10 +5,15 @@
 // Hay funciones que usaremos en pasos siguientes; por ahora no avisar
 #![allow(dead_code)]
 
+mod block;
+mod camera;
 mod image;
 mod math;
+mod perlin;
 mod ray;
-
+mod render;
+mod scene;
+mod texture;
 use math::Vec3;
 use ray::{Aabb, Ray};
 use std::path::Path;
