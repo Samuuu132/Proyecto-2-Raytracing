@@ -1,13 +1,10 @@
-//! Rayos y cajas alineadas a los ejes (AABB).
 
 use crate::math::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Ray {
     pub origin: Vec3,
-    /// Siempre normalizada
     pub direction: Vec3,
-    /// 1/direction precalculado: el test de slabs solo multiplica
     pub inv_dir: Vec3,
 }
 
@@ -29,7 +26,6 @@ impl Ray {
     }
 }
 
-/// Axis-Aligned Bounding Box
 #[derive(Clone, Copy, Debug)]
 pub struct Aabb {
     pub min: Vec3,
@@ -41,11 +37,6 @@ impl Aabb {
         Self { min, max }
     }
 
-    /// Test de intersección por el método de slabs (Kay & Kajiya).
-    /// Intersecta el rayo con los 3 pares de planos paralelos y se queda con
-    /// el intervalo [t_near, t_far] común. Devuelve ese intervalo recortado a
-    /// [t_min, t_max] o `None` si no hay cruce.
-    #[inline]
     pub fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<(f32, f32)> {
         let mut t0 = t_min;
         let mut t1 = t_max;
@@ -56,7 +47,6 @@ impl Aabb {
             if inv < 0.0 {
                 std::mem::swap(&mut tn, &mut tf);
             }
-            // f32::max/min ignoran NaN (caso 0 * inf), así que es robusto
             t0 = t0.max(tn);
             t1 = t1.min(tf);
             if t1 < t0 {
@@ -66,8 +56,6 @@ impl Aabb {
         Some((t0, t1))
     }
 
-    /// Igual que `intersect` pero además dice por cuál eje entró el rayo
-    /// (ese eje define la cara golpeada y por lo tanto la normal).
     #[inline]
     pub fn intersect_face(&self, ray: &Ray) -> Option<(f32, usize)> {
         let mut t_near = f32::NEG_INFINITY;

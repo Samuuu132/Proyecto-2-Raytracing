@@ -1,8 +1,3 @@
-//! Texturas pixel-art de 16x16 generadas por código (estilo Minecraft) y
-//! mapas de normales derivados de mapas de altura.
-//!
-//! No se cargan imágenes externas: cada textura es una función (x, y) -> color
-//! con ruido hash determinista, así el proyecto no depende de ningún crate.
 
 use crate::math::{srgb, Vec3};
 use crate::perlin;
@@ -10,7 +5,6 @@ use crate::perlin;
 pub const TEX_SIZE: usize = 16;
 const S: i32 = TEX_SIZE as i32;
 
-/// Hash entero -> [0, 1). Determinista, sin estado.
 #[inline]
 pub fn hash2(x: i32, y: i32, seed: u32) -> f32 {
     let mut h = (x as u32).wrapping_mul(374_761_393)
@@ -21,14 +15,12 @@ pub fn hash2(x: i32, y: i32, seed: u32) -> f32 {
     (h & 0x00ff_ffff) as f32 / 16_777_216.0
 }
 
-/// Textura de albedo. Los colores se guardan ya en espacio lineal.
 #[derive(Clone)]
 pub struct Texture {
     data: Vec<Vec3>,
 }
 
 impl Texture {
-    /// Construye la textura evaluando `f(x, y)` en cada texel. `f` devuelve sRGB.
     pub fn from_fn<F: Fn(i32, i32) -> Vec3>(f: F) -> Self {
         let mut data = Vec::with_capacity(TEX_SIZE * TEX_SIZE);
         for y in 0..S {
@@ -40,7 +32,6 @@ impl Texture {
         Self { data }
     }
 
-    /// Muestreo nearest-neighbor (look pixelado de Minecraft). v = 0 abajo.
     #[inline]
     pub fn sample(&self, u: f32, v: f32) -> Vec3 {
         let x = ((u * TEX_SIZE as f32) as usize).min(TEX_SIZE - 1);
@@ -49,22 +40,18 @@ impl Texture {
     }
 }
 
-/// Mapa de normales en espacio tangente (x -> T, y -> B, z -> N).
 #[derive(Clone)]
 pub struct NormalMap {
     data: Vec<Vec3>,
 }
 
 impl NormalMap {
-    /// Deriva las normales de un mapa de altura con diferencias centrales:
-    /// n = normalize(-dh/du * k, -dh/dv * k, 1)
     pub fn from_height<F: Fn(i32, i32) -> f32>(height: F, strength: f32) -> Self {
         let h = |x: i32, y: i32| height(x.rem_euclid(S), y.rem_euclid(S));
         let mut data = Vec::with_capacity(TEX_SIZE * TEX_SIZE);
         for y in 0..S {
             for x in 0..S {
                 let du = (h(x + 1, y) - h(x - 1, y)) * 0.5;
-                // la fila crece hacia abajo, v crece hacia arriba
                 let dv = (h(x, y - 1) - h(x, y + 1)) * 0.5;
                 data.push(Vec3::new(-du * strength, -dv * strength, 1.0).normalize());
             }
@@ -80,16 +67,12 @@ impl NormalMap {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers de color (valores en sRGB 0..1)
-// ---------------------------------------------------------------------------
 
 #[inline]
 fn col(r: f32, g: f32, b: f32) -> Vec3 {
     Vec3::new(r, g, b)
 }
 
-/// Varía el brillo de un color según un valor aleatorio t en [0,1)
 #[inline]
 fn vary(c: Vec3, t: f32, amount: f32) -> Vec3 {
     c * (1.0 - amount + 2.0 * amount * t)
@@ -99,9 +82,6 @@ fn lerp3(a: Vec3, b: Vec3, t: f32) -> Vec3 {
     Vec3::lerp(a, b, t.clamp(0.0, 1.0))
 }
 
-// ---------------------------------------------------------------------------
-// Generadores de texturas
-// ---------------------------------------------------------------------------
 
 fn grass_color(x: i32, y: i32) -> Vec3 {
     let c = vary(col(0.40, 0.66, 0.25), hash2(x, y, 1), 0.16);
@@ -155,7 +135,6 @@ pub fn stone_height(x: i32, y: i32) -> f32 {
     perlin::noise2(x as f32 * 0.35 + 3.1, y as f32 * 0.35 + 7.7) * 0.6 + hash2(x, y, 11) * 0.3
 }
 
-/// Patrón de ladrillos: 4 filas de 4 texeles, ladrillos de 8 de largo desfasados.
 fn brick_info(x: i32, y: i32) -> (bool, i32) {
     let row = y / 4;
     let offset = if row % 2 == 1 { 4 } else { 0 };
@@ -177,7 +156,6 @@ pub fn stone_bricks() -> Texture {
     })
 }
 
-/// Altura para el normal map: mortero hundido, bordes biselados, grietas.
 pub fn stone_bricks_height(x: i32, y: i32) -> f32 {
     let (mortar, _) = brick_info(x, y);
     if mortar {
@@ -192,7 +170,6 @@ pub fn stone_bricks_height(x: i32, y: i32) -> f32 {
     base - if crack { 0.5 } else { 0.0 } + hash2(x, y, 15) * 0.12
 }
 
-/// Celdas de Voronoi para el cobblestone: (F2 - F1, id de la piedra)
 fn cobble_cell(x: i32, y: i32) -> (f32, i32) {
     let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
     let (cx, cy) = (x / 4, y / 4);

@@ -1,7 +1,3 @@
-//! Álgebra lineal desde cero: vector 3D y utilidades escalares.
-//!
-//! Todo el motor trabaja en `f32` (más rápido que `f64` y suficiente para
-//! una escena de ~100 unidades de ancho).
 
 use std::ops::{Add, AddAssign, Div, Index, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -27,13 +23,11 @@ impl Vec3 {
         Self::new(v, v, v)
     }
 
-    /// Producto punto: |a||b|cos(θ)
     #[inline]
     pub fn dot(self, o: Vec3) -> f32 {
         self.x * o.x + self.y * o.y + self.z * o.z
     }
 
-    /// Producto cruz: vector perpendicular a ambos (regla de la mano derecha)
     #[inline]
     pub fn cross(self, o: Vec3) -> Vec3 {
         Vec3::new(
@@ -48,7 +42,6 @@ impl Vec3 {
         self.dot(self)
     }
 
-    /// Magnitud del vector
     #[inline]
     pub fn length(self) -> f32 {
         self.length_squared().sqrt()
@@ -64,21 +57,17 @@ impl Vec3 {
         }
     }
 
-    /// Reflexión especular: R = I - 2 (I·N) N
     #[inline]
     pub fn reflect(self, n: Vec3) -> Vec3 {
         self - n * (2.0 * self.dot(n))
     }
 
-    /// Refracción por la ley de Snell-Descartes.
-    /// `n` debe apuntar hacia el lado de donde viene el rayo (dot(I, N) < 0)
-    /// y `eta = n1 / n2`. Devuelve `None` si hay reflexión interna total (TIR).
     #[inline]
     pub fn refract(self, n: Vec3, eta: f32) -> Option<Vec3> {
         let cos_i = (-self.dot(n)).clamp(-1.0, 1.0);
         let sin2_t = eta * eta * (1.0 - cos_i * cos_i);
         if sin2_t > 1.0 {
-            return None; // reflexión interna total
+            return None;
         }
         let cos_t = (1.0 - sin2_t).sqrt();
         Some((self * eta + n * (eta * cos_i - cos_t)).normalize())
@@ -149,7 +138,6 @@ impl SubAssign for Vec3 {
     }
 }
 
-/// Vector * escalar
 impl Mul<f32> for Vec3 {
     type Output = Vec3;
     #[inline]
@@ -158,7 +146,6 @@ impl Mul<f32> for Vec3 {
     }
 }
 
-/// Escalar * vector
 impl Mul<Vec3> for f32 {
     type Output = Vec3;
     #[inline]
@@ -167,7 +154,6 @@ impl Mul<Vec3> for f32 {
     }
 }
 
-/// Producto componente a componente (Hadamard): se usa para mezclar colores
 impl Mul<Vec3> for Vec3 {
     type Output = Vec3;
     #[inline]
@@ -202,7 +188,6 @@ impl Neg for Vec3 {
     }
 }
 
-/// Acceso por eje: v[0] = x, v[1] = y, v[2] = z
 impl Index<usize> for Vec3 {
     type Output = f32;
     #[inline]
@@ -215,7 +200,6 @@ impl Index<usize> for Vec3 {
     }
 }
 
-/// Aproximación de Schlick para el término de Fresnel.
 #[inline]
 pub fn schlick(cos_theta: f32, n1: f32, n2: f32) -> f32 {
     let r0 = ((n1 - n2) / (n1 + n2)).powi(2);
@@ -233,7 +217,6 @@ pub fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// Convierte un color sRGB (0..1) a espacio lineal, donde se hace la iluminación.
 #[inline]
 pub fn srgb(r: f32, g: f32, b: f32) -> Vec3 {
     Vec3::new(r, g, b).powf(2.2)

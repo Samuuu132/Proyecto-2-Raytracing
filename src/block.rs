@@ -1,7 +1,5 @@
-//! Tipos de bloque. Cada celda del mundo guarda un `u8` con uno de estos ids.
 
 pub const AIR: u8 = 0;
-// --- Overworld ---
 pub const GRASS: u8 = 1;
 pub const DIRT: u8 = 2;
 pub const STONE: u8 = 3;
@@ -15,7 +13,6 @@ pub const GLASS: u8 = 10;
 pub const WATER: u8 = 11;
 pub const LAVA: u8 = 12;
 pub const GOLD: u8 = 13;
-// --- Nether ---
 pub const NETHERRACK: u8 = 14;
 pub const OBSIDIAN: u8 = 15;
 pub const PORTAL: u8 = 16;
@@ -24,14 +21,11 @@ pub const GLOWSTONE: u8 = 18;
 
 pub const BLOCK_COUNT: usize = 19;
 
-/// Bloques que bloquean la luz ambiental (para la oclusión ambiental)
 #[inline]
 pub fn occludes(b: u8) -> bool {
     !matches!(b, AIR | WATER | GLASS | PORTAL)
 }
 
-/// Bloques que dejan pasar parte de la luz en los rayos de sombra.
-/// Devuelve cuánta luz pasa (1 = toda, 0 = nada).
 #[inline]
 pub fn shadow_transmission(b: u8) -> f32 {
     match b {

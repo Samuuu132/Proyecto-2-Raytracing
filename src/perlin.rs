@@ -1,10 +1,4 @@
-//! Ruido de Perlin (versión "Improved Noise" de Ken Perlin, 2002) en Rust puro.
-//!
-//! - `noise2`: 2D, se usa para la elevación del terreno Y = f(X, Z)
-//! - `noise3`: 3D, se usa para las nubes del skybox
-//! - `fbm2` / `fbm3`: suma de octavas (fractal Brownian motion)
 
-/// Tabla de permutaciones estática original de Perlin (0..255 barajados).
 const P: [u8; 256] = [
     151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69,
     142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219,
@@ -26,7 +20,6 @@ fn perm(i: usize) -> usize {
     P[i & 255] as usize
 }
 
-/// Curva de suavizado 6t^5 - 15t^4 + 10t^3 (derivadas 1ª y 2ª continuas)
 #[inline]
 fn fade(t: f32) -> f32 {
     t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
@@ -37,7 +30,6 @@ fn lerp(t: f32, a: f32, b: f32) -> f32 {
     a + t * (b - a)
 }
 
-/// Producto punto entre uno de 8 vectores gradiente 2D y el vector distancia
 #[inline]
 fn grad2(hash: usize, x: f32, y: f32) -> f32 {
     match hash & 7 {
@@ -52,7 +44,6 @@ fn grad2(hash: usize, x: f32, y: f32) -> f32 {
     }
 }
 
-/// Producto punto con uno de los 12 gradientes 3D (aristas de un cubo)
 #[inline]
 fn grad3(hash: usize, x: f32, y: f32, z: f32) -> f32 {
     let h = hash & 15;
@@ -67,7 +58,6 @@ fn grad3(hash: usize, x: f32, y: f32, z: f32) -> f32 {
     (if h & 1 == 0 { u } else { -u }) + (if h & 2 == 0 { v } else { -v })
 }
 
-/// Ruido de Perlin 2D, rango aproximado [-1, 1]
 pub fn noise2(x: f32, y: f32) -> f32 {
     let xf0 = x.floor();
     let yf0 = y.floor();
@@ -78,7 +68,6 @@ pub fn noise2(x: f32, y: f32) -> f32 {
     let u = fade(xf);
     let v = fade(yf);
 
-    // Hash de las 4 esquinas de la celda
     let aa = perm(perm(xi) + yi);
     let ab = perm(perm(xi) + yi + 1);
     let ba = perm(perm(xi + 1) + yi);
@@ -89,7 +78,6 @@ pub fn noise2(x: f32, y: f32) -> f32 {
     lerp(v, x1, x2) * 0.9
 }
 
-/// Ruido de Perlin 3D, rango aproximado [-1, 1]
 pub fn noise3(x: f32, y: f32, z: f32) -> f32 {
     let (xf0, yf0, zf0) = (x.floor(), y.floor(), z.floor());
     let xi = (xf0 as i32 & 255) as usize;
@@ -132,8 +120,6 @@ pub fn noise3(x: f32, y: f32, z: f32) -> f32 {
     )
 }
 
-/// Fractal Brownian Motion 2D: suma octavas duplicando frecuencia y
-/// reduciendo amplitud a la mitad. Resultado normalizado a ~[-1, 1].
 pub fn fbm2(x: f32, y: f32, octaves: u32) -> f32 {
     let (mut sum, mut amp, mut freq, mut norm) = (0.0, 1.0, 1.0, 0.0);
     for _ in 0..octaves {
@@ -162,7 +148,6 @@ mod tests {
 
     #[test]
     fn noise_is_zero_on_integer_lattice() {
-        // Propiedad clásica del ruido de gradiente
         assert!(noise2(3.0, 7.0).abs() < 1e-6);
         assert!(noise3(1.0, 2.0, 3.0).abs() < 1e-6);
     }

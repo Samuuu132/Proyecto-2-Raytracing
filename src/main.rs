@@ -1,8 +1,3 @@
-//! Paso 1: prueba de la base matemática.
-//! Lanza un rayo por píxel contra un cubo (AABB) y colorea según la normal
-//! de la cara golpeada. Si no golpea nada, pinta un degradado de cielo.
-
-// Hay funciones que usaremos en pasos siguientes; por ahora no avisar
 #![allow(dead_code)]
 
 mod block;
@@ -14,55 +9,147 @@ mod ray;
 mod render;
 mod scene;
 mod texture;
+
+use camera::OrbitCamera;
 use math::Vec3;
-use ray::{Aabb, Ray};
+use raylib::prelude::*;
+use render::Framebuffer;
 use std::path::Path;
+use std::time::Instant;
+
+const WIN_W: i32 = 1280;
+const WIN_H: i32 = 720;
+const PREVIEW_SCALE: usize = 3;
+const IDLE_BEFORE_FULL: f32 = 0.15;
 
 fn main() {
-    let (w, h) = (640usize, 360usize);
-    let aspect = w as f32 / h as f32;
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
 
-    // Cubo girado "a mano": lo vemos desde una esquina para ver 3 caras
-    let cube = Aabb::new(Vec3::new(-1.0, -1.0, -1.0), Vec3::new(1.0, 1.0, 1.0));
-    let eye = Vec3::new(3.5, 2.8, 4.5);
-    let forward = (Vec3::ZERO - eye).normalize();
-    let right = forward.cross(Vec3::UP).normalize();
-    let up = right.cross(forward);
-    let tan_half = (45.0f32.to_radians() * 0.5).tan();
+    let (mut rl, thread) = raylib::init()
+        .size(WIN_W, WIN_H)
+        .title("Proyecto 2 - Raytracing (CPU)")
+        .build();
+    rl.set_target_fps(60);
 
-    let mut rgb = vec![0u8; w * h * 3];
-    for y in 0..h {
-        for x in 0..w {
-            let sx = (2.0 * (x as f32 + 0.5) / w as f32 - 1.0) * aspect * tan_half;
-            let sy = (1.0 - 2.0 * (y as f32 + 0.5) / h as f32) * tan_half;
-            let ray = Ray::new(eye, forward + right * sx + up * sy);
+    let scene = scene::TestScene::new();
+    let mut orbit = OrbitCamera::new(Vec3::new(0.0, 0.0, 0.0), 0.8, 0.55, 14.0);
+    let aspect = WIN_W as f32 / WIN_H as f32;
 
-            let color = match cube.intersect_face(&ray) {
-                Some((_t, axis)) => {
-                    // Normal de la cara: el eje por donde entró el rayo
-                    let mut n = Vec3::ZERO;
-                    let s = if ray.direction[axis] > 0.0 { -1.0 } else { 1.0 };
-                    match axis {
-                        0 => n.x = s,
-                        1 => n.y = s,
-                        _ => n.z = s,
-                    }
-                    // Luz direccional simple (Lambert) para comprobar dot()
-                    let light = Vec3::new(0.4, 1.0, 0.6).normalize();
-                    let diff = n.dot(light).max(0.0);
-                    (n * 0.5 + Vec3::splat(0.5)) * (0.3 + 0.7 * diff)
-                }
-                None => {
-                    let t = 0.5 * (ray.direction.y + 1.0);
-                    Vec3::lerp(Vec3::new(1.0, 0.75, 0.6), Vec3::new(0.3, 0.45, 0.85), t)
-                }
-            };
-            let i = (y * w + x) * 3;
-            rgb[i] = (color.x.clamp(0.0, 1.0) * 255.0) as u8;
-            rgb[i + 1] = (color.y.clamp(0.0, 1.0) * 255.0) as u8;
-            rgb[i + 2] = (color.z.clamp(0.0, 1.0) * 255.0) as u8;
+    let mut fb_full = Framebuffer::new(WIN_W as usize, WIN_H as usize);
+    let mut fb_prev = Framebuffer::new(WIN_W as usize / PREVIEW_SCALE, WIN_H as usize / PREVIEW_SCALE);
+    let mut tex_full = make_texture(&mut rl, &thread, &fb_full);
+    let mut tex_prev = make_texture(&mut rl, &thread, &fb_prev);
+    tex_prev.set_texture_filter(&thread, TextureFilter::TEXTURE_FILTER_POINT);
+
+    let mut auto_rotate = false;
+    let mut idle = 0.0f32;
+    let mut full_ready = false;
+    let mut showing_full = false;
+    let mut last_render_ms = 0.0f32;
+    let mut first_frame = true;
+
+    while !rl.window_should_close() {
+        let dt = rl.get_frame_time();
+        let before = orbit;
+
+        if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
+            auto_rotate = !auto_rotate;
         }
+        let rot_speed = 1.6 * dt;
+        if rl.is_key_down(KeyboardKey::KEY_A) || rl.is_key_down(KeyboardKey::KEY_LEFT) {
+            orbit.rotate(-rot_speed, 0.0);
+        }
+        if rl.is_key_down(KeyboardKey::KEY_D) || rl.is_key_down(KeyboardKey::KEY_RIGHT) {
+            orbit.rotate(rot_speed, 0.0);
+        }
+        if rl.is_key_down(KeyboardKey::KEY_W) || rl.is_key_down(KeyboardKey::KEY_UP) {
+            orbit.rotate(0.0, rot_speed * 0.6);
+        }
+        if rl.is_key_down(KeyboardKey::KEY_S) || rl.is_key_down(KeyboardKey::KEY_DOWN) {
+            orbit.rotate(0.0, -rot_speed * 0.6);
+        }
+        if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+            let d = rl.get_mouse_delta();
+            orbit.rotate(-d.x * 0.006, d.y * 0.006);
+        }
+        let wheel = rl.get_mouse_wheel_move();
+        if wheel != 0.0 {
+            orbit.zoom(1.0 - wheel * 0.1);
+        }
+        if rl.is_key_down(KeyboardKey::KEY_Q) {
+            orbit.zoom(1.0 - 1.2 * dt);
+        }
+        if rl.is_key_down(KeyboardKey::KEY_E) {
+            orbit.zoom(1.0 + 1.2 * dt);
+        }
+        if auto_rotate {
+            orbit.rotate(0.5 * dt, 0.0);
+        }
+
+        let moved = orbit != before || first_frame;
+        first_frame = false;
+        if moved {
+            idle = 0.0;
+            full_ready = false;
+            let t = Instant::now();
+            render::render(&scene, &orbit.camera(aspect), &mut fb_prev, threads, 1);
+            last_render_ms = t.elapsed().as_secs_f32() * 1000.0;
+            let _ = tex_prev.update_texture(&fb_prev.pixels);
+            showing_full = false;
+        } else {
+            idle += dt;
+            if !full_ready && idle >= IDLE_BEFORE_FULL {
+                let t = Instant::now();
+                render::render(&scene, &orbit.camera(aspect), &mut fb_full, threads, 1);
+                last_render_ms = t.elapsed().as_secs_f32() * 1000.0;
+                let _ = tex_full.update_texture(&fb_full.pixels);
+                full_ready = true;
+                showing_full = true;
+            }
+        }
+
+        if rl.is_key_pressed(KeyboardKey::KEY_P) {
+            if !full_ready {
+                render::render(&scene, &orbit.camera(aspect), &mut fb_full, threads, 1);
+            }
+            let name = format!("captura_{}.bmp", chrono_stamp());
+            match image::save(Path::new(&name), fb_full.width, fb_full.height, &fb_full.to_rgb()) {
+                Ok(()) => println!("Captura guardada: {name}"),
+                Err(e) => eprintln!("No se pudo guardar la captura: {e}"),
+            }
+        }
+
+        let fps = rl.get_fps();
+        let mut d = rl.begin_drawing(&thread);
+        d.clear_background(Color::BLACK);
+        let tex = if showing_full { &tex_full } else { &tex_prev };
+        let src = Rectangle::new(0.0, 0.0, tex.width() as f32, tex.height() as f32);
+        let dst = Rectangle::new(0.0, 0.0, WIN_W as f32, WIN_H as f32);
+        d.draw_texture_pro(tex, src, dst, Vector2::zero(), 0.0, Color::WHITE);
+
+        d.draw_rectangle(8, 8, 330, 118, Color::new(0, 0, 0, 140));
+        d.draw_text(
+            &format!("FPS {fps}  |  render {last_render_ms:.1} ms  |  {threads} hilos"),
+            16, 16, 16, Color::WHITE,
+        );
+        d.draw_text(
+            if showing_full { "Resolucion completa" } else { "Preview (moviendo)" },
+            16, 38, 16, Color::LIGHTGRAY,
+        );
+        d.draw_text("Arrastrar / A D: rotar   W S: inclinar", 16, 62, 14, Color::LIGHTGRAY);
+        d.draw_text("Rueda / Q E: zoom   Espacio: auto-rotar", 16, 80, 14, Color::LIGHTGRAY);
+        d.draw_text("P: guardar captura BMP", 16, 98, 14, Color::LIGHTGRAY);
     }
-    image::save(Path::new("paso1.bmp"), w, h, &rgb).expect("no se pudo guardar la imagen");
-    println!("Listo: paso1.bmp ({}x{})", w, h);
+}
+
+fn make_texture(rl: &mut RaylibHandle, thread: &RaylibThread, fb: &Framebuffer) -> Texture2D {
+    let img = Image::gen_image_color(fb.width as i32, fb.height as i32, Color::BLACK);
+    rl.load_texture_from_image(thread, &img)
+        .expect("no se pudo crear la textura")
+}
+
+fn chrono_stamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }

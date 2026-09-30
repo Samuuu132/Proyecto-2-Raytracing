@@ -2,10 +2,13 @@
 name = "skyblock-raytracer"
 version = "1.0.0"
 edition = "2021"
-description = "Raytracer en CPU (Rust puro, sin crates) de un diorama Skyblock de 4 islas flotantes"
+description = "Raytracer en CPU escrito a mano en Rust: diorama Skyblock (overworld + nether)"
 
-# Sin dependencias: todo (álgebra, intersecciones, ruido, texturas, imágenes) está hecho con std.
+# raylib SOLO abre la ventana, muestra el framebuffer y lee teclado/mouse.
+# Todo el raytracing (álgebra, intersecciones, materiales, ruido, texturas)
+# está implementado a mano con la librería estándar.
 [dependencies]
+raylib = "5.5"
 
 [profile.release]
 opt-level = 3
