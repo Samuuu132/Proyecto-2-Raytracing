@@ -10,7 +10,7 @@
 //!   Espacio                              rotación automática on/off
 //!   P                                    guardar captura (BMP)
 
-// Algunas funciones se usan hasta los pasos 6 y 7
+// Algunas funciones se usan hasta el paso 7
 #![allow(dead_code)]
 
 mod block;
@@ -24,6 +24,8 @@ mod perlin;
 mod ray;
 mod render;
 mod scene;
+mod shading;
+mod skybox;
 mod texture;
 mod voxel;
 mod world;
@@ -47,9 +49,10 @@ fn main() {
     let t = Instant::now();
     let scene = scene::Scene::new();
     println!(
-        "Escena lista en {:.0} ms: {} bloques, {} hilos",
+        "Escena lista en {:.0} ms: {} bloques, {} luces, {} hilos",
         t.elapsed().as_secs_f32() * 1000.0,
         scene.world.solid_count(),
+        scene.lights.len(),
         threads
     );
     println!("Materiales: {}", scene.materials.names().join(", "));
