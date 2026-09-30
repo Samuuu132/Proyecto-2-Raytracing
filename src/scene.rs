@@ -1,9 +1,8 @@
-//! Escena del paso 4: un "muestrario" con todos los bloques texturizados
-//! sobre una plataforma, para revisar texturas, UVs y normal maps.
-//! (En el paso 5 se cambia por el diorama y en el paso 6 por la escena final.)
+//! Escena del paso 5: el diorama completo con iluminación simple.
+//! (En el paso 6 se reemplaza por la escena final con luces y skybox.)
 
-use crate::block::*;
 use crate::camera::OrbitCamera;
+use crate::diorama;
 use crate::material::{MaterialKind, MaterialLibrary};
 use crate::math::Vec3;
 use crate::ray::Ray;
@@ -20,30 +19,18 @@ pub struct Scene {
 
 impl Scene {
     pub fn new() -> Self {
-        let mut world = World::new([24, 8, 12]);
-        // plataforma de ladrillos de piedra
-        for z in 1..11 {
-            for x in 1..23 {
-                world.set(x, 0, z, STONE_BRICKS);
-            }
-        }
-        // dos filas con cada tipo de bloque (del 1 al 18)
-        for id in 1..BLOCK_COUNT as u8 {
-            let i = (id - 1) as i32;
-            let (x, z) = (2 + (i % 9) * 2 + 1, if i < 9 { 3 } else { 7 });
-            world.set(x, 1, z, id);
-        }
-        world.add_region("muestrario".into(), [0, 0, 0], [24, 8, 12]);
+        // las luces de los emisivos se usan hasta el paso 6
+        let (world, _lights) = diorama::build();
         Self {
             world,
             materials: MaterialLibrary::new(),
-            sun: Vec3::new(0.55, 0.75, 0.45).normalize(),
-            center: Vec3::new(12.0, 1.0, 6.0),
+            sun: Vec3::new(0.55, 0.42, 0.50).normalize(),
+            center: Vec3::new(29.0, diorama::SURFACE_Y as f32 - 2.0, 14.0),
         }
     }
 
     pub fn default_orbit(&self) -> OrbitCamera {
-        OrbitCamera::new(self.center, 0.35, 0.6, 22.0)
+        OrbitCamera::new(self.center, 0.35, 0.42, 50.0)
     }
 }
 

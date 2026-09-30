@@ -15,7 +15,9 @@
 
 mod block;
 mod camera;
+mod diorama;
 mod image;
+mod light;
 mod material;
 mod math;
 mod perlin;
