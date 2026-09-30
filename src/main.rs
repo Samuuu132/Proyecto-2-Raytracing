@@ -1,17 +1,31 @@
+//! Proyecto 2: Raytracing en CPU — ventana interactiva.
+//!
+//! raylib solo se usa para: abrir la ventana, subir nuestro framebuffer a una
+//! textura y leer teclado/mouse. Cada píxel lo calcula nuestro raytracer.
+//!
+//! Controles:
+//!   Mouse izq. + arrastrar / A D / ← →   rotar alrededor del diorama
+//!   W S / ↑ ↓                            inclinar la cámara
+//!   Rueda del mouse / Q E                acercar / alejar (zoom)
+//!   Espacio                              rotación automática on/off
+//!   P                                    guardar captura (BMP)
+
+// Algunas funciones se usan hasta los pasos 6 y 7
 #![allow(dead_code)]
 
 mod block;
 mod camera;
 mod image;
+mod material;
 mod math;
 mod perlin;
 mod ray;
 mod render;
 mod scene;
 mod texture;
+mod voxel;
+mod world;
 
-use camera::OrbitCamera;
-use math::Vec3;
 use raylib::prelude::*;
 use render::Framebuffer;
 use std::path::Path;
@@ -19,11 +33,27 @@ use std::time::Instant;
 
 const WIN_W: i32 = 1280;
 const WIN_H: i32 = 720;
+/// Mientras la cámara se mueve se renderiza a 1/PREVIEW_SCALE de resolución
+/// para que se sienta fluido; al soltar, se renderiza en resolución completa.
 const PREVIEW_SCALE: usize = 3;
+/// Segundos sin mover la cámara antes de hacer el render completo
 const IDLE_BEFORE_FULL: f32 = 0.15;
 
 fn main() {
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
+
+    let t = Instant::now();
+    let scene = scene::Scene::new();
+    println!(
+        "Escena lista en {:.0} ms: {} bloques, {} hilos",
+        t.elapsed().as_secs_f32() * 1000.0,
+        scene.world.solid_count(),
+        threads
+    );
+    println!("Materiales: {}", scene.materials.names().join(", "));
+    for r in &scene.world.regions {
+        println!("Región (AABB broadphase): {}", r.name);
+    }
 
     let (mut rl, thread) = raylib::init()
         .size(WIN_W, WIN_H)
@@ -31,10 +61,10 @@ fn main() {
         .build();
     rl.set_target_fps(60);
 
-    let scene = scene::TestScene::new();
-    let mut orbit = OrbitCamera::new(Vec3::new(0.0, 0.0, 0.0), 0.8, 0.55, 14.0);
+    let mut orbit = scene.default_orbit();
     let aspect = WIN_W as f32 / WIN_H as f32;
 
+    // Dos framebuffers: preview (baja resolución) y completo
     let mut fb_full = Framebuffer::new(WIN_W as usize, WIN_H as usize);
     let mut fb_prev = Framebuffer::new(WIN_W as usize / PREVIEW_SCALE, WIN_H as usize / PREVIEW_SCALE);
     let mut tex_full = make_texture(&mut rl, &thread, &fb_full);
@@ -52,6 +82,7 @@ fn main() {
         let dt = rl.get_frame_time();
         let before = orbit;
 
+        // ------------------------- entrada -------------------------
         if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
             auto_rotate = !auto_rotate;
         }
@@ -86,9 +117,11 @@ fn main() {
             orbit.rotate(0.5 * dt, 0.0);
         }
 
+        // ------------------------- render --------------------------
         let moved = orbit != before || first_frame;
         first_frame = false;
         if moved {
+            // cámara en movimiento: preview rápido en baja resolución
             idle = 0.0;
             full_ready = false;
             let t = Instant::now();
@@ -99,6 +132,7 @@ fn main() {
         } else {
             idle += dt;
             if !full_ready && idle >= IDLE_BEFORE_FULL {
+                // cámara quieta: un solo render en resolución completa
                 let t = Instant::now();
                 render::render(&scene, &orbit.camera(aspect), &mut fb_full, threads, 1);
                 last_render_ms = t.elapsed().as_secs_f32() * 1000.0;
@@ -119,6 +153,7 @@ fn main() {
             }
         }
 
+        // ------------------------- dibujo --------------------------
         let fps = rl.get_fps();
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::BLACK);
@@ -127,14 +162,21 @@ fn main() {
         let dst = Rectangle::new(0.0, 0.0, WIN_W as f32, WIN_H as f32);
         d.draw_texture_pro(tex, src, dst, Vector2::zero(), 0.0, Color::WHITE);
 
+        // HUD
         d.draw_rectangle(8, 8, 330, 118, Color::new(0, 0, 0, 140));
         d.draw_text(
             &format!("FPS {fps}  |  render {last_render_ms:.1} ms  |  {threads} hilos"),
-            16, 16, 16, Color::WHITE,
+            16,
+            16,
+            16,
+            Color::WHITE,
         );
         d.draw_text(
             if showing_full { "Resolucion completa" } else { "Preview (moviendo)" },
-            16, 38, 16, Color::LIGHTGRAY,
+            16,
+            38,
+            16,
+            Color::LIGHTGRAY,
         );
         d.draw_text("Arrastrar / A D: rotar   W S: inclinar", 16, 62, 14, Color::LIGHTGRAY);
         d.draw_text("Rueda / Q E: zoom   Espacio: auto-rotar", 16, 80, 14, Color::LIGHTGRAY);
@@ -148,6 +190,7 @@ fn make_texture(rl: &mut RaylibHandle, thread: &RaylibThread, fb: &Framebuffer) 
         .expect("no se pudo crear la textura")
 }
 
+/// Marca de tiempo simple (segundos desde 1970) para nombrar capturas
 fn chrono_stamp() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

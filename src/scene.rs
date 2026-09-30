@@ -1,75 +1,67 @@
+//! Escena del paso 4: un "muestrario" con todos los bloques texturizados
+//! sobre una plataforma, para revisar texturas, UVs y normal maps.
+//! (En el paso 5 se cambia por el diorama y en el paso 6 por la escena final.)
 
+use crate::block::*;
+use crate::camera::OrbitCamera;
+use crate::material::{MaterialKind, MaterialLibrary};
 use crate::math::Vec3;
-use crate::ray::{Aabb, Ray};
+use crate::ray::Ray;
 use crate::render::Shade;
+use crate::voxel::face_uv;
+use crate::world::World;
 
-pub struct TestScene {
-    cubes: Vec<(Aabb, Vec3)>,
+pub struct Scene {
+    pub world: World,
+    pub materials: MaterialLibrary,
     sun: Vec3,
+    center: Vec3,
 }
 
-impl TestScene {
+impl Scene {
     pub fn new() -> Self {
-        let mut cubes = Vec::new();
-        for z in -4i32..4 {
-            for x in -4i32..4 {
-                let hgt = ((x + z).rem_euclid(3)) as f32 * 0.25;
-                let min = Vec3::new(x as f32, -1.0, z as f32);
-                let color = if (x + z) % 2 == 0 {
-                    Vec3::new(0.35, 0.65, 0.25)
-                } else {
-                    Vec3::new(0.30, 0.55, 0.20)
-                };
-                cubes.push((Aabb::new(min, min + Vec3::new(1.0, 1.0 + hgt, 1.0)), color));
+        let mut world = World::new([24, 8, 12]);
+        // plataforma de ladrillos de piedra
+        for z in 1..11 {
+            for x in 1..23 {
+                world.set(x, 0, z, STONE_BRICKS);
             }
         }
-        cubes.push((
-            Aabb::new(Vec3::new(-3.0, 0.0, -3.0), Vec3::new(-1.0, 2.0, -1.0)),
-            Vec3::new(0.70, 0.52, 0.30),
-        ));
-        cubes.push((
-            Aabb::new(Vec3::new(1.0, 0.5, 1.0), Vec3::new(2.0, 1.5, 2.0)),
-            Vec3::new(1.0, 0.8, 0.2),
-        ));
+        // dos filas con cada tipo de bloque (del 1 al 18)
+        for id in 1..BLOCK_COUNT as u8 {
+            let i = (id - 1) as i32;
+            let (x, z) = (2 + (i % 9) * 2 + 1, if i < 9 { 3 } else { 7 });
+            world.set(x, 1, z, id);
+        }
+        world.add_region("muestrario".into(), [0, 0, 0], [24, 8, 12]);
         Self {
-            cubes,
-            sun: Vec3::new(0.5, 0.9, 0.35).normalize(),
+            world,
+            materials: MaterialLibrary::new(),
+            sun: Vec3::new(0.55, 0.75, 0.45).normalize(),
+            center: Vec3::new(12.0, 1.0, 6.0),
         }
     }
 
-    fn hit(&self, ray: &Ray) -> Option<(f32, usize, usize)> {
-        let mut best: Option<(f32, usize, usize)> = None;
-        for (i, (b, _)) in self.cubes.iter().enumerate() {
-            if let Some((t, axis)) = b.intersect_face(ray) {
-                if t > 1e-4 && best.map_or(true, |(bt, _, _)| t < bt) {
-                    best = Some((t, axis, i));
-                }
-            }
-        }
-        best
+    pub fn default_orbit(&self) -> OrbitCamera {
+        OrbitCamera::new(self.center, 0.35, 0.6, 22.0)
     }
 }
 
-impl Shade for TestScene {
+impl Shade for Scene {
     fn shade(&self, ray: &Ray) -> Vec3 {
-        match self.hit(ray) {
-            Some((t, axis, i)) => {
-                let mut n = Vec3::ZERO;
-                let s = if ray.direction[axis] > 0.0 { -1.0 } else { 1.0 };
-                match axis {
-                    0 => n.x = s,
-                    1 => n.y = s,
-                    _ => n.z = s,
-                }
-                let p = ray.at(t) + n * 1e-3;
-                let lit = self.hit(&Ray::new(p, self.sun)).is_none();
-                let diff = if lit { n.dot(self.sun).max(0.0) } else { 0.0 };
-                self.cubes[i].1 * (0.25 + 0.9 * diff)
-            }
-            None => {
-                let t = 0.5 * (ray.direction.y + 1.0);
-                Vec3::lerp(Vec3::new(1.0, 0.62, 0.45), Vec3::new(0.18, 0.25, 0.55), t)
-            }
+        let Some(hit) = self.world.trace(ray, f32::INFINITY) else {
+            // cielo provisional (el skybox llega en el paso 6)
+            let t = 0.5 * (ray.direction.y + 1.0);
+            return Vec3::lerp(Vec3::new(1.0, 0.62, 0.45), Vec3::new(0.18, 0.25, 0.55), t);
+        };
+        let m = self.materials.get(hit.block);
+        let (u, v) = face_uv(hit.point, hit.cell, hit.axis, hit.normal);
+        let albedo = self.materials.albedo(hit.block, hit.normal, u, v);
+        if m.kind == MaterialKind::Emissive {
+            return albedo * m.emission;
         }
+        // normal con normal map (se nota en los ladrillos del piso)
+        let n = self.materials.shading_normal(hit.block, hit.axis, hit.normal, u, v);
+        albedo * (0.3 + 0.9 * n.dot(self.sun).max(0.0))
     }
 }
