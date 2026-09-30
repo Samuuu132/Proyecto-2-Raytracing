@@ -1,0 +1,19 @@
+[package]
+name = "skyblock-raytracer"
+version = "1.0.0"
+edition = "2021"
+description = "Raytracer en CPU (Rust puro, sin crates) de un diorama Skyblock de 4 islas flotantes"
+
+# Sin dependencias: todo (álgebra, intersecciones, ruido, texturas, imágenes) está hecho con std.
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = false
+
+# Para iterar rápido en debug sin que sea insoportablemente lento
+[profile.dev]
+opt-level = 1

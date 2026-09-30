@@ -1,0 +1,3 @@
+# Compila usando todas las instrucciones SIMD de tu CPU (AVX2, etc.)
+[build]
+rustflags = ["-C", "target-cpu=native"]
